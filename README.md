@@ -22,8 +22,6 @@ O projeto resolve a opacidade do mercado de leilões imobiliários substituindo 
 ## 📂 Estrutura do Repositório
 
 ```text
-/home/luan/Documentos/FESA/TCC/
-│
 ├── Bases de Dados/
 │   ├── SP/             # Planilhas de ITBI e Leilões de São Paulo
 │   ├── MG/             # Planilhas de ITBI e Leilões de Belo Horizonte
