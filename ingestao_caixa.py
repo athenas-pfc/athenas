@@ -183,12 +183,17 @@ def baixar_arquivos_caixa_playwright(base_dir):
     print("\n[DOWNLOAD] Verificando novos arquivos no portal da Caixa Econômica...")
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            context = browser.new_context(accept_downloads=True)
+            # 1. MUDANÇA: Abrir o navegador fisicamente na tela. WAFs bloqueiam navegadores fantasmas.
+            browser = p.chromium.launch(headless=False)
+
+            # 2. MUDANÇA: Injetar User-Agent fingindo ser um usuário humano comum no Chrome
+            context = browser.new_context(
+                accept_downloads=True,
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+            )
             page = context.new_page()
 
             url_portal = "https://venda-imoveis.caixa.gov.br/sistema/download-lista.asp"
-            page.goto(url_portal, timeout=60000)
 
             estados = ['SP', 'MG', 'RJ']
             for estado in estados:
@@ -205,6 +210,14 @@ def baixar_arquivos_caixa_playwright(base_dir):
 
                 print(f"  -> Solicitando lote diário para o estado {estado}...")
                 page.goto(url_portal, timeout=60000)
+
+                # 3. MUDANÇA: Esperar explicitamente o formulário renderizar na tela antes de clicar
+                try:
+                    page.wait_for_selector("#cmb_estado", state="visible", timeout=30000)
+                except Exception:
+                    print(f"  -> [ERRO] O portal da Caixa bloqueou a tela ou está fora do ar para {estado}.")
+                    continue
+
                 page.locator("#cmb_estado").select_option(estado)
 
                 with page.expect_download(timeout=90000) as download_info:
@@ -214,9 +227,12 @@ def baixar_arquivos_caixa_playwright(base_dir):
                 download.save_as(caminho_completo)
                 print(f"     [SUCESSO] Planilha recebida e arquivada: {nome_arquivo}")
 
+            # Pequena pausa antes de encerrar o contexto para garantir segurança do I/O
+            page.wait_for_timeout(2000)
             browser.close()
+
     except Exception as e:
-        print(f"  -> [AVISO] Falha durante a rotina Playwright: {e}")
+        print(f"  -> [AVISO CRÍTICO] Falha durante a rotina Playwright: {e}")
 
 
 # ==========================================
