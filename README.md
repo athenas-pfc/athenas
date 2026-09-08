@@ -22,16 +22,21 @@ O projeto resolve a opacidade do mercado de leilões imobiliários substituindo 
 ## 📂 Estrutura do Repositório
 
 ```text
-/home/luan/Documentos/FESA/TCC/
-│
+├── docs
+│   ├── diagrama_bd_leilao.jpeg         # Diagrama banco de dados dos leilões 
+│   └── diagrama_bd_mercado.jpeg        # Diagrama banco de dados dos registro de ITBI
+│    
 ├── Bases de Dados/
-│   ├── SP/             # Planilhas de ITBI e Leilões de São Paulo
-│   ├── MG/             # Planilhas de ITBI e Leilões de Belo Horizonte
-│   └── RJ/             # Planilhas de ITBI e Leilões do Rio de Janeiro
-│   └── Leiloes/        # Snapshots diários organizados por estado
+│   ├── SP/                             # Planilhas de ITBI da cidade de São Paulo
+│   ├── MG/                             # Planilhas de ITBI da cidade de Belo Horizonte
+│   └── RJ/                             # Planilhas de ITBI da cidade do Rio de Janeiro
+│   └── Leiloes/                        # Snapshots diários organizados por estado
+│       ├── SP/                         # Planilhas de Leilões do estado de São Paulo
+│       ├── MG/                         # Planilhas de Leilões do estado de Minas Gerais
+│       └── RJ/                         # Planilhas de Leilões do estado do Rio de Janeiro
 │
-├── ingestao_caixa.py   # Pipeline ETL automatizado via Playwright para a Base Volátil (Leilões Caixa)
-├── ingestao_mercado.py # Pipeline ETL para a Base Imutável (ITBI / Mercado)
-├── analise_retorno.py  # Motor Financeiro (Cálculo de TIR e Payback)
-├── app.py              # Aplicação Dash (Dashboard Geoespacial)
-└── README.md           # Documentação inicial do repositório
+├── ingestao_caixa.py                   # Pipeline ETL automatizado via Playwright para a Base Volátil (Leilões Caixa)
+├── ingestao_mercado.py                 # Pipeline ETL para a Base Imutável (ITBI / Mercado)
+├── analise_retorno.py                  # Motor Financeiro (Cálculo de TIR e Payback)
+├── schema.sql                          # Estrutura SQL do banco de dados
+└── README.md                           # Documentação inicial do repositório
