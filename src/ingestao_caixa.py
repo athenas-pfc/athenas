@@ -1,14 +1,4 @@
-"""
-Lambda 1 - EXTRACAO (urllib3 + proxy rotativo)
-Baixa a lista publica de imoveis da Caixa e grava o arquivo bruto,
-sem nenhuma transformacao, na camada RAW do S3.
-
-A origem fica atras do Radware Bot Manager, que responde com pagina de
-desafio no lugar do CSV. A estrategia aqui e nao parecer automacao:
-cabecalhos coerentes com o User-Agent declarado, sessao TLS nova a cada
-tentativa e IP de saida diferente a cada rodada.
-"""
-
+# Ingestão caixa
 import hashlib
 import os
 import random

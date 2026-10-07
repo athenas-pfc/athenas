@@ -1,0 +1,14 @@
+{
+  "estado": {
+    "S": "RJ"
+  },
+  "base": {
+    "S": "Caixa"
+  },
+  "active": {
+    "BOOL": true
+  },
+  "periodicidade": {
+    "S": "diário"
+  }
+}
