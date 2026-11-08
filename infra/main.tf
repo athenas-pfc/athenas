@@ -40,6 +40,52 @@ resource "aws_dynamodb_table_item" "controle" {
 }
 
 # ---------------------------------------------------------------------------
+# DynamoDB: log operacional gravado por src/pipeline_log.py
+# ---------------------------------------------------------------------------
+
+resource "aws_dynamodb_table" "log" {
+  name         = var.tabela_log
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "id_execucao"
+  range_key    = "id_evento"
+
+  attribute {
+    name = "id_execucao"
+    type = "S"
+  }
+
+  attribute {
+    name = "id_evento"
+    type = "S"
+  }
+
+  attribute {
+    name = "status"
+    type = "S"
+  }
+
+  attribute {
+    name = "data_hora"
+    type = "S"
+  }
+
+  # Modelo descrito no pipeline_log (status + data_hora, para varrer falhas de
+  # todas as execucoes). Nenhum codigo consulta o indice por enquanto.
+  global_secondary_index {
+    name            = "idx_status"
+    hash_key        = "status"
+    range_key       = "data_hora"
+    projection_type = "ALL"
+  }
+
+  # O pipeline_log grava ttl = agora + TTL_DIAS, em epoch (segundos).
+  ttl {
+    attribute_name = "ttl"
+    enabled        = true
+  }
+}
+
+# ---------------------------------------------------------------------------
 # Lambda: ingestao_caixa.py
 # ---------------------------------------------------------------------------
 
@@ -80,6 +126,22 @@ resource "aws_iam_role_policy" "lambda_s3" {
   })
 }
 
+resource "aws_iam_role_policy" "lambda_log" {
+  name = "gravar-log-pipeline"
+  role = aws_iam_role.lambda_ingestao.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = ["dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:Query"]
+      Resource = [
+        aws_dynamodb_table.log.arn,
+        "${aws_dynamodb_table.log.arn}/index/*",
+      ]
+    }]
+  })
+}
+
 resource "aws_lambda_function" "ingestao_caixa" {
   function_name    = "${local.prefixo}-ingestao-caixa"
   role             = aws_iam_role.lambda_ingestao.arn
@@ -95,9 +157,17 @@ resource "aws_lambda_function" "ingestao_caixa" {
 
   environment {
     variables = {
-      BUCKET      = var.bucket_raw
-      PREFIXO_RAW = var.prefixo_raw
-      PROXY_URL   = var.proxy_url
+      BUCKET                   = var.bucket_raw
+      BASE_URL                 = var.base_url
+      PAGINA_ORIGEM            = var.pagina_origem
+      PREFIXO_RAW              = var.prefixo_raw
+      TENTATIVAS               = var.tentativas
+      TIMEOUT_HTTP             = var.timeout_http
+      LIMITE_REDIRECIONAMENTOS = var.limite_redirecionamentos
+      PROXY_URL                = var.proxy_url
+      VERSAO_CHROME            = var.versao_chrome
+      TABELA_LOG               = var.tabela_log
+      TTL_DIAS                 = var.ttl_dias
     }
   }
 }
