@@ -17,7 +17,7 @@
       "Comment": "Retorna os itens no formato do DynamoDB ({\"S\": ...}); o filtro e a conversao sao feitos no Assign.",
       "Resource": "arn:aws:states:::aws-sdk:dynamodb:scan",
       "Arguments": {
-        "TableName": "tcc-parametros"
+        "TableName": "${tabela_controle}"
       },
       "Assign": {
         "execucoes": "{% [$states.result.Items[active.* = true and ($lowercase(periodicidade.S) in ['diário', 'diario'] or ($lowercase(periodicidade.S) = 'mensal' and $executarMensal))].{'uf': estado.S, 'base': base.S, 'periodicidade': periodicidade.S}] %}"
@@ -62,7 +62,7 @@
             "Type": "Task",
             "Resource": "arn:aws:states:::lambda:invoke",
             "Arguments": {
-              "FunctionName": "FESA-Ingestion",
+              "FunctionName": "${lambda_ingestao_caixa}",
               "Payload": {
                 "uf": "{% $states.input.uf %}",
                 "data_referencia": "{% $dataReferencia %}"

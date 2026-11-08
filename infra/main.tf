@@ -1,51 +1,10 @@
-terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = ">= 5.70"
-    }
-    archive = {
-      source  = "hashicorp/archive"
-      version = ">= 2.4"
-    }
-  }
-}
+locals {
+  # Todo recurso leva o prefixo do ambiente. As roles de deploy do GitHub
+  # (bootstrap/) so tem permissao sobre recursos com o prefixo do proprio
+  # ambiente: e isso que impede o pipeline de DEV de mexer em PROD.
+  prefixo = "athenas-${var.ambiente}"
 
-provider "aws" {
-  region = var.regiao
-}
-
-# ---------------------------------------------------------------------------
-# Variaveis
-# ---------------------------------------------------------------------------
-
-variable "regiao" {
-  type    = string
-  default = "sa-east-1"
-}
-
-variable "bucket_raw" {
-  description = "Bucket onde a ingestao grava os CSVs brutos (camada raw)."
-  type        = string
-}
-
-variable "proxy_url" {
-  description = "Proxy de saida da ingestao Caixa (http://usuario:senha@host:porta). Vazio = conexao direta."
-  type        = string
-  default     = ""
-  sensitive   = true
-}
-
-variable "lambda_layers" {
-  description = "ARNs de layers da lambda (ex.: layer com o modulo pipeline_log)."
-  type        = list(string)
-  default     = []
-}
-
-variable "agendamento" {
-  description = "Horario da execucao diaria, no fuso America/Sao_Paulo."
-  type        = string
-  default     = "cron(0 6 * * ? *)"
+  raiz_projeto = "${path.module}/.."
 }
 
 data "aws_caller_identity" "atual" {}
@@ -54,10 +13,8 @@ data "aws_caller_identity" "atual" {}
 # DynamoDB: tabela de controle, populada com os JSONs de src/dynamo
 # ---------------------------------------------------------------------------
 
-# Os nomes da tabela e da lambda estao fixos em step_functions/ingestao.asl.json,
-# para a definicao poder ser colada direto no console. Mude nos dois lugares.
 resource "aws_dynamodb_table" "controle" {
-  name         = "tcc-parametros"
+  name         = "${local.prefixo}-parametros"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "estado"
   range_key    = "base"
@@ -74,12 +31,12 @@ resource "aws_dynamodb_table" "controle" {
 }
 
 resource "aws_dynamodb_table_item" "controle" {
-  for_each = fileset("${path.module}/src/dynamo", "*.json")
+  for_each = fileset("${local.raiz_projeto}/src/dynamo", "*.json")
 
   table_name = aws_dynamodb_table.controle.name
   hash_key   = aws_dynamodb_table.controle.hash_key
   range_key  = aws_dynamodb_table.controle.range_key
-  item       = file("${path.module}/src/dynamo/${each.value}")
+  item       = file("${local.raiz_projeto}/src/dynamo/${each.value}")
 }
 
 # ---------------------------------------------------------------------------
@@ -88,13 +45,13 @@ resource "aws_dynamodb_table_item" "controle" {
 
 data "archive_file" "ingestao" {
   type        = "zip"
-  source_dir  = "${path.module}/src"
+  source_dir  = "${local.raiz_projeto}/src"
   output_path = "${path.module}/build/ingestao.zip"
   excludes    = ["dynamo/**", "**/__pycache__/**", "ingestao_itbi.py"]
 }
 
 resource "aws_iam_role" "lambda_ingestao" {
-  name = "athenas-lambda-ingestao"
+  name = "${local.prefixo}-lambda-ingestao"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -118,13 +75,13 @@ resource "aws_iam_role_policy" "lambda_s3" {
     Statement = [{
       Effect   = "Allow"
       Action   = "s3:PutObject"
-      Resource = "arn:aws:s3:::${var.bucket_raw}/raw/caixa/*"
+      Resource = "arn:aws:s3:::${var.bucket_raw}/${var.prefixo_raw}/*"
     }]
   })
 }
 
 resource "aws_lambda_function" "ingestao_caixa" {
-  function_name    = "FESA-Ingestion"
+  function_name    = "${local.prefixo}-ingestao-caixa"
   role             = aws_iam_role.lambda_ingestao.arn
   runtime          = "python3.12"
   handler          = "ingestao_caixa.lambda_handler"
@@ -139,7 +96,7 @@ resource "aws_lambda_function" "ingestao_caixa" {
   environment {
     variables = {
       BUCKET      = var.bucket_raw
-      PREFIXO_RAW = "raw/caixa"
+      PREFIXO_RAW = var.prefixo_raw
       PROXY_URL   = var.proxy_url
     }
   }
@@ -150,7 +107,7 @@ resource "aws_lambda_function" "ingestao_caixa" {
 # ---------------------------------------------------------------------------
 
 resource "aws_iam_role" "sfn_ingestao" {
-  name = "athenas-sfn-ingestao"
+  name = "${local.prefixo}-sfn-ingestao"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -188,11 +145,15 @@ resource "aws_iam_role_policy" "sfn_ingestao" {
 }
 
 resource "aws_sfn_state_machine" "ingestao" {
-  name     = "athenas-ingestao"
+  name     = "${local.prefixo}-ingestao"
   role_arn = aws_iam_role.sfn_ingestao.arn
-  definition = file("${path.module}/step_functions/ingestao.asl.json")
 
-  depends_on = [aws_dynamodb_table.controle, aws_lambda_function.ingestao_caixa]
+  # Os nomes da tabela e da lambda entram por template, para cada ambiente
+  # apontar para os proprios recursos.
+  definition = templatefile("${local.raiz_projeto}/step_functions/ingestao.asl.json", {
+    tabela_controle       = aws_dynamodb_table.controle.name
+    lambda_ingestao_caixa = aws_lambda_function.ingestao_caixa.function_name
+  })
 }
 
 # ---------------------------------------------------------------------------
@@ -200,7 +161,7 @@ resource "aws_sfn_state_machine" "ingestao" {
 # ---------------------------------------------------------------------------
 
 resource "aws_iam_role" "scheduler_ingestao" {
-  name = "athenas-scheduler-ingestao"
+  name = "${local.prefixo}-scheduler-ingestao"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -228,9 +189,10 @@ resource "aws_iam_role_policy" "scheduler_ingestao" {
 }
 
 resource "aws_scheduler_schedule" "ingestao_diaria" {
-  name                         = "athenas-ingestao-diaria"
+  name                         = "${local.prefixo}-ingestao-diaria"
   schedule_expression          = var.agendamento
   schedule_expression_timezone = "America/Sao_Paulo"
+  state                        = var.agendamento_ativo ? "ENABLED" : "DISABLED"
 
   flexible_time_window {
     mode = "OFF"
@@ -245,4 +207,8 @@ resource "aws_scheduler_schedule" "ingestao_diaria" {
 
 output "state_machine_arn" {
   value = aws_sfn_state_machine.ingestao.arn
+}
+
+output "lambda_ingestao_caixa" {
+  value = aws_lambda_function.ingestao_caixa.function_name
 }
