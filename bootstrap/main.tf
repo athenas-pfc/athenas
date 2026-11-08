@@ -43,6 +43,14 @@ variable "github_repo" {
   default     = "athenas-pfc/athenas"
 }
 
+# A org athenas-pfc inclui os IDs numericos do dono e do repositorio no sub
+# do token OIDC (dono@id/nome@id). Os IDs nao mudam se o repo for renomeado.
+variable "github_sub_prefixo" {
+  description = "Prefixo do claim sub do token OIDC do GitHub, sem o contexto final (:pull_request, :environment:...)."
+  type        = string
+  default     = "repo:athenas-pfc@353591849/athenas@1346632218"
+}
+
 variable "criar_provedor_oidc" {
   description = "false se a conta ja tiver o provedor OIDC token.actions.githubusercontent.com."
   type        = bool
@@ -112,9 +120,9 @@ resource "aws_iam_openid_connect_provider" "github" {
 # Trust policy: so o repositorio, e so no contexto indicado (sub do token).
 data "aws_iam_policy_document" "confianca" {
   for_each = {
-    plan = "repo:${var.github_repo}:pull_request"
-    dev  = "repo:${var.github_repo}:environment:dev"
-    prod = "repo:${var.github_repo}:environment:prod"
+    plan = "${var.github_sub_prefixo}:pull_request"
+    dev  = "${var.github_sub_prefixo}:environment:dev"
+    prod = "${var.github_sub_prefixo}:environment:prod"
   }
 
   statement {
