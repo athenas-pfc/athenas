@@ -37,12 +37,6 @@ variable "regiao" {
   default = "sa-east-1"
 }
 
-variable "github_repo" {
-  description = "Repositorio no formato dono/nome."
-  type        = string
-  default     = "athenas-pfc/athenas"
-}
-
 # A org athenas-pfc inclui os IDs numericos do dono e do repositorio no sub
 # do token OIDC (dono@id/nome@id). Os IDs nao mudam se o repo for renomeado.
 variable "github_sub_prefixo" {
@@ -207,6 +201,13 @@ data "aws_iam_policy_document" "deploy" {
       "arn:aws:states:${var.regiao}:${local.conta}:stateMachine:athenas-${each.key}-*",
       "arn:aws:states:${var.regiao}:${local.conta}:execution:athenas-${each.key}-*:*",
     ]
+  }
+
+  # O provider valida a definicao antes de criar/alterar a state machine.
+  statement {
+    sid       = "ValidarStateMachine"
+    actions   = ["states:ValidateStateMachineDefinition"]
+    resources = ["*"]
   }
 
   statement {
