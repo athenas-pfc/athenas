@@ -1,0 +1,146 @@
+{
+  "Comment": "Orquestra as ingestoes a partir da tabela de controle do DynamoDB (PK = estado, SK = base).",
+  "QueryLanguage": "JSONata",
+  "StartAt": "DefinirCalendario",
+  "States": {
+    "DefinirCalendario": {
+      "Type": "Pass",
+      "Comment": "Ultimo dia do mes = amanha e dia 01 (fuso de Brasilia). 'forcar_mensal' no input permite testar as bases mensais fora dessa data.",
+      "Assign": {
+        "executarMensal": "{% $fromMillis($millis() + 86400000, '[D01]', '-0300') = '01' or $states.input.forcar_mensal = true %}",
+        "dataReferencia": "{% $exists($states.input.data_referencia) ? $states.input.data_referencia : null %}"
+      },
+      "Next": "LerTabelaControle"
+    },
+    "LerTabelaControle": {
+      "Type": "Task",
+      "Comment": "Retorna os itens no formato do DynamoDB ({\"S\": ...}); o filtro e a conversao sao feitos no Assign.",
+      "Resource": "arn:aws:states:::aws-sdk:dynamodb:scan",
+      "Arguments": {
+        "TableName": "${tabela_controle}"
+      },
+      "Assign": {
+        "execucoes": "{% [$states.result.Items[active.* = true and ($lowercase(periodicidade.S) in ['diário', 'diario'] or ($lowercase(periodicidade.S) = 'mensal' and $executarMensal))].{'uf': estado.S, 'base': base.S, 'periodicidade': periodicidade.S}] %}"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.TaskFailed"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "ExecutarIngestoes"
+    },
+    "ExecutarIngestoes": {
+      "Type": "Map",
+      "Items": "{% $execucoes %}",
+      "MaxConcurrency": 0,
+      "ItemProcessor": {
+        "ProcessorConfig": {
+          "Mode": "INLINE"
+        },
+        "StartAt": "RotearPorBase",
+        "States": {
+          "RotearPorBase": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Condition": "{% $states.input.base = 'Caixa' %}",
+                "Next": "IngestaoCaixa"
+              },
+              {
+                "Condition": "{% $states.input.base = 'ITBI' %}",
+                "Next": "IngestaoITBI"
+              }
+            ],
+            "Default": "BaseDesconhecida"
+          },
+          "IngestaoCaixa": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Arguments": {
+              "FunctionName": "${lambda_ingestao_caixa}",
+              "Payload": {
+                "uf": "{% $states.input.uf %}",
+                "data_referencia": "{% $dataReferencia %}"
+              }
+            },
+            "Output": "{% {'uf': $states.input.uf, 'base': $states.input.base, 'status': 'SUCESSO', 'resultado': $states.result.Payload} %}",
+            "Retry": [
+              {
+                "ErrorEquals": [
+                  "Lambda.ServiceException",
+                  "Lambda.AWSLambdaException",
+                  "Lambda.SdkClientException",
+                  "Lambda.TooManyRequestsException"
+                ],
+                "IntervalSeconds": 2,
+                "MaxAttempts": 3,
+                "BackoffRate": 2,
+                "JitterStrategy": "FULL"
+              },
+              {
+                "ErrorEquals": [
+                  "ErroDownload",
+                  "ErroBloqueio"
+                ],
+                "IntervalSeconds": 120,
+                "MaxAttempts": 2,
+                "BackoffRate": 2,
+                "JitterStrategy": "FULL"
+              }
+            ],
+            "Catch": [
+              {
+                "ErrorEquals": [
+                  "States.ALL"
+                ],
+                "Output": "{% {'uf': $states.input.uf, 'base': $states.input.base, 'status': 'FALHA', 'erro': $states.errorOutput.Error, 'causa': $states.errorOutput.Cause} %}",
+                "Next": "RegistrarFalha"
+              }
+            ],
+            "End": true
+          },
+          "IngestaoITBI": {
+            "Type": "Pass",
+            "Comment": "ingestao_itbi.py ainda em construcao: trocar por um Task lambda:invoke igual ao IngestaoCaixa quando a funcao existir.",
+            "Output": "{% {'uf': $states.input.uf, 'base': $states.input.base, 'status': 'IGNORADO', 'motivo': 'ingestao_itbi.py em construcao'} %}",
+            "End": true
+          },
+          "BaseDesconhecida": {
+            "Type": "Pass",
+            "Output": "{% {'uf': $states.input.uf, 'base': $states.input.base, 'status': 'FALHA', 'erro': 'BaseDesconhecida', 'causa': 'SK sem ingestao mapeada na state machine'} %}",
+            "End": true
+          },
+          "RegistrarFalha": {
+            "Type": "Pass",
+            "Comment": "Isola a falha da UF: as demais ingestoes do Map seguem rodando.",
+            "End": true
+          }
+        }
+      },
+      "Next": "VerificarFalhas"
+    },
+    "VerificarFalhas": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Condition": "{% $count($states.input[status = 'FALHA']) > 0 %}",
+          "Next": "IngestaoComFalhas"
+        }
+      ],
+      "Default": "Concluido"
+    },
+    "IngestaoComFalhas": {
+      "Type": "Fail",
+      "Error": "IngestaoComFalhas",
+      "Cause": "{% $string([$states.input[status = 'FALHA']]) %}"
+    },
+    "Concluido": {
+      "Type": "Succeed"
+    }
+  }
+}

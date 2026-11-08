@@ -1,0 +1,14 @@
+{
+  "estado": {
+    "S": "RJ"
+  },
+  "base": {
+    "S": "ITBI"
+  },
+  "active": {
+    "BOOL": true
+  },
+  "periodicidade": {
+    "S": "mensal"
+  }
+}

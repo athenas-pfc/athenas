@@ -1,0 +1,70 @@
+name: Deploy
+
+# develop -> DEV (automatico)
+# main    -> PROD (aguarda aprovacao no environment "prod")
+on:
+  push:
+    branches: [develop, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  TF_VERSION: "<1.14.0"
+  AWS_REGION: ${{ vars.AWS_REGION || 'sa-east-1' }}
+
+jobs:
+  deploy:
+    name: Deploy ${{ github.ref_name == 'main' && 'PROD' || 'DEV' }}
+    # workflow_dispatch so faz sentido nas branches de ambiente.
+    if: github.ref_name == 'main' || github.ref_name == 'develop'
+    runs-on: ubuntu-latest
+    # O environment e a trava: as secrets e a role da AWS de cada ambiente so
+    # ficam acessiveis aqui, e o "prod" exige aprovacao de um revisor.
+    environment: ${{ github.ref_name == 'main' && 'prod' || 'dev' }}
+    concurrency:
+      group: deploy-${{ github.ref_name }}
+      cancel-in-progress: false
+    defaults:
+      run:
+        shell: bash
+        working-directory: infra
+    env:
+      AMBIENTE: ${{ github.ref_name == 'main' && 'prod' || 'dev' }}
+      TF_VAR_proxy_url: ${{ github.ref_name == 'main' && secrets.PROXY_URL_PROD || secrets.PROXY_URL_DEV }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Credenciais AWS (${{ env.AMBIENTE }})
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/github-athenas-${{ env.AMBIENTE }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Init
+        run: |
+          terraform init -input=false \
+            -backend-config="envs/${AMBIENTE}.backend.hcl" \
+            -backend-config="bucket=athenas-tfstate-${{ vars.AWS_ACCOUNT_ID }}"
+
+      - name: Plan
+        run: terraform plan -input=false -no-color -var-file="envs/${AMBIENTE}.tfvars" -out=tfplan
+
+      - name: Apply
+        run: terraform apply -input=false -no-color tfplan
+
+      - name: Resumo
+        run: |
+          {
+            echo "### Deploy ${AMBIENTE} concluido"
+            echo "- Commit: \`${GITHUB_SHA::7}\`"
+            echo "- State machine: \`$(terraform output -raw state_machine_arn)\`"
+            echo "- Lambda: \`$(terraform output -raw lambda_ingestao_caixa)\`"
+          } >> "$GITHUB_STEP_SUMMARY"
