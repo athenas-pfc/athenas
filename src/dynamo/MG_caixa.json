@@ -1,0 +1,14 @@
+{
+  "estado": {
+    "S": "MG"
+  },
+  "base": {
+    "S": "Caixa"
+  },
+  "active": {
+    "BOOL": true
+  },
+  "periodicidade": {
+    "S": "diário"
+  }
+}

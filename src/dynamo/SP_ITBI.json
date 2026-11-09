@@ -1,0 +1,14 @@
+{
+  "estado": {
+    "S": "SP"
+  },
+  "base": {
+    "S": "ITBI"
+  },
+  "active": {
+    "BOOL": true
+  },
+  "periodicidade": {
+    "S": "mensal"
+  }
+}
