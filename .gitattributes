@@ -1,0 +1,9 @@
+# LF no repositorio e no working tree, inclusive no Windows com autocrlf:
+# o zip da lambda (data.archive_file sobre src/) precisa sair identico na
+# maquina local e no CI, senao o source_code_hash muda a cada plan.
+src/**     text=auto eol=lf
+*.py       text eol=lf
+*.json     text eol=lf
+*.tf       text eol=lf
+*.tfvars   text eol=lf
+*.hcl      text eol=lf

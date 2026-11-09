@@ -94,6 +94,10 @@ data "archive_file" "ingestao" {
   source_dir  = "${local.raiz_projeto}/src"
   output_path = "${path.module}/build/ingestao.zip"
   excludes    = ["dynamo/**", "**/__pycache__/**", "ingestao_itbi.py"]
+
+  # Permissao fixa: o Windows reporta 0666 e o checkout do CI 0644, o que
+  # mudaria o hash do zip. Junto com o .gitattributes (LF), o zip sai igual.
+  output_file_mode = "0644"
 }
 
 resource "aws_iam_role" "lambda_ingestao" {
