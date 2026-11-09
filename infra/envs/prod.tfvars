@@ -18,9 +18,7 @@ tentativas = 3
 # (data.archive_file empacota src/ inteiro), sem layer.
 lambda_layers = []
 
-agendamento = "cron(0 6 * * ? *)"
-
-# TEMPORARIO: desligado para validar o deploy de PROD sem captura automatica.
-# Vira true quando a convivencia com o agendamento do FESA (trigg-tcc, 9h)
-# for decidida.
-agendamento_ativo = false
+# Convive com o FESA: athenas-prod as 6h e trigg-tcc as 9h (America/Sao_Paulo),
+# com prefixos separados no bucket (prod/raw/caixa e raw/caixa).
+agendamento       = "cron(0 6 * * ? *)"
+agendamento_ativo = true
