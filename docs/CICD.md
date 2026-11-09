@@ -40,7 +40,7 @@ um deploy automático em `main` não teria nenhuma aprovação.
 | DynamoDB | `athenas-dev-parametros` | `athenas-prod-parametros` |
 | Lambda | `athenas-dev-ingestao-caixa` | `athenas-prod-ingestao-caixa` |
 | Step Function | `athenas-dev-ingestao` | `athenas-prod-ingestao` |
-| Agendamento | `athenas-dev-ingestao-diaria` (desligado) | `athenas-prod-ingestao-diaria` (desligado, temporário — ver abaixo) |
+| Agendamento | `athenas-dev-ingestao-diaria` (desligado) | `athenas-prod-ingestao-diaria` (ligado, 6h) |
 
 Os valores de cada ambiente ficam em `infra/envs/dev.tfvars` e `infra/envs/prod.tfvars`.
 
@@ -61,9 +61,9 @@ repositório.
   com o mesmo prefixo, um sobrescreveria o arquivo do outro todo dia, sem volta.
   A policy da lambda de PROD só permite gravar sob `prod/raw/caixa/`, então o
   histórico do FESA fica fora de alcance.
-- O agendamento de PROD está **desligado** (`agendamento_ativo = false` em
-  `prod.tfvars`) até decidirmos como os dois pipelines vão conviver. Até lá, PROD
-  só roda por execução manual da Step Function.
+- A convivência está definida: os dois agendamentos ficam ligados, cada um no
+  seu horário e gravando no seu prefixo (`agendamento_ativo = true` em
+  `prod.tfvars`).
 
 ## Rodar o Terraform localmente
 
