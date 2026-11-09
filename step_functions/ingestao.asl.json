@@ -65,7 +65,8 @@
               "FunctionName": "${lambda_ingestao_caixa}",
               "Payload": {
                 "uf": "{% $states.input.uf %}",
-                "data_referencia": "{% $dataReferencia %}"
+                "data_referencia": "{% $dataReferencia %}",
+                "id_execucao": "{% $states.context.Execution.Name %}"
               }
             },
             "Output": "{% {'uf': $states.input.uf, 'base': $states.input.base, 'status': 'SUCESSO', 'resultado': $states.result.Payload} %}",
