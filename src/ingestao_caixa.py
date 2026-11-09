@@ -33,6 +33,10 @@ SEC_CH_UA = (f'"Not/A)Brand";v="8", "Chromium";v="{VERSAO_CHROME}", '
 
 REDIRECIONAMENTOS = (301, 302, 303, 307, 308)
 
+# Respostas definitivas da origem: repetir na mesma execucao nao muda nada.
+# Os demais (408, 429, 5xx) e as falhas de conexao seguem com retry e backoff.
+STATUS_SEM_RETRY = (400, 401, 402, 403, 404, 405, 406, 410, 451)
+
 MARCADORES_HTML = (b"<html", b"<head", b"<body", b"<!doctype",
                    b"<script", b"<meta", b"<title")
 
@@ -50,6 +54,11 @@ class ErroProxy(ErroDownload):
 
 class ErroBloqueio(ErroDownload):
     """A origem respondeu, mas devolveu desafio anti-bot em vez do arquivo."""
+
+
+class ErroAcessoNegado(Exception):
+    """Resposta definitiva da origem (STATUS_SEM_RETRY): nem a lambda nem a
+    Step Function repetem. Fica fora da hierarquia de ErroDownload de proposito."""
 
 
 def _abrir_sessao():
@@ -190,6 +199,7 @@ def _requisitar(cliente, url: str, destino: str, jarra: dict, rotulo: str):
 
 def baixar(url: str) -> bytes:
     ultimo_erro = None
+    erro_definitivo = None
 
     for tentativa in range(1, TENTATIVAS + 1):
         jarra = {}
@@ -220,6 +230,12 @@ def baixar(url: str) -> bytes:
                 raise ErroProxy("proxy recusou a autenticacao (407) na resposta")
             if status != 200:
                 detalhe = conteudo[:200].decode("latin1", errors="replace").replace("\n", " ")
+                print(f"[ERRO] HTTP {status} | headers: {dict(resp_arquivo.headers)}")
+                if status in STATUS_SEM_RETRY:
+                    erro_definitivo = ErroAcessoNegado(
+                        f"falha ao baixar {url}: HTTP {status} sem retry "
+                        f"(tentativa {tentativa}/{TENTATIVAS}) | corpo: {detalhe}")
+                    break
                 raise ErroDownload(f"HTTP {status} | corpo: {detalhe}")
             if not conteudo or len(conteudo) < 1024:
                 raise ErroDownload(f"conteudo vazio ou truncado ({len(conteudo)} bytes)")
@@ -251,6 +267,8 @@ def baixar(url: str) -> bytes:
             print(f"[INFO] aguardando {espera:.1f}s antes da proxima tentativa")
             time.sleep(espera)
 
+    if erro_definitivo:
+        raise erro_definitivo
     if isinstance(ultimo_erro, ErroProxy):
         raise ErroProxy(
             f"falha ao baixar {url}: o proxy nao autenticou. Detalhe: {ultimo_erro}")
