@@ -1,10 +1,12 @@
 name: Deploy
 
-# develop -> DEV (automatico)
-# main    -> PROD (aguarda aprovacao no environment "prod")
+# develop -> DEV (automatico, a cada push)
+# PROD    -> so manual: workflow_dispatch a partir da main. O plano gratuito
+#            nao tem Required reviewers em repositorio privado, entao um push
+#            em main nao pode subir producao sozinho.
 on:
   push:
-    branches: [develop, main]
+    branches: [develop]
   workflow_dispatch:
 
 permissions:
@@ -22,7 +24,7 @@ jobs:
     if: github.ref_name == 'main' || github.ref_name == 'develop'
     runs-on: ubuntu-latest
     # O environment e a trava: as secrets e a role da AWS de cada ambiente so
-    # ficam acessiveis aqui, e o "prod" exige aprovacao de um revisor.
+    # ficam acessiveis aqui.
     environment: ${{ github.ref_name == 'main' && 'prod' || 'dev' }}
     concurrency:
       group: deploy-${{ github.ref_name }}
