@@ -12,7 +12,7 @@ prefixo_raw = "prod/raw/caixa"
 tabela_log = "athenas-prod-pipeline-logs"
 
 # Mesmo valor da lambda antiga (FESA-Ingestion); o default do codigo e 5.
-tentativas = 3
+tentativas = 4
 
 # Vazio de proposito: o pipeline_log vai dentro do zip da lambda
 # (data.archive_file empacota src/ inteiro), sem layer.

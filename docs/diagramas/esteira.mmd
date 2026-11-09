@@ -1,0 +1,139 @@
+%% Athenas: papel da esteira de CI/CD no projeto
+%% Fontes: .github/workflows/*.yml, bootstrap/main.tf, infra/main.tf,
+%%         infra/envs/*, step_functions/ingestao.asl.json, docs/CICD.md
+%% Os planos se ligam entre si (e nao no) de proposito: o Mermaid ignora o
+%% "direction" de um subgraph quando um no de dentro tem seta para fora dele.
+
+flowchart TB
+
+  %% ------------------------------------------------------------------
+  %% Legenda
+  %% ------------------------------------------------------------------
+  %% direction TB com nos soltos = nos lado a lado (uma linha so)
+  subgraph LEG["Legenda"]
+    direction TB
+    LG1["Implementado e rodando"]
+    LG2["Projetado · ainda não existe"]
+    LG3["Externo · pipeline FESA"]
+    LG4["Role da AWS via OIDC"]
+  end
+
+  %% ------------------------------------------------------------------
+  %% PLANO 1: desenvolvimento e entrega (a esteira)
+  %% ------------------------------------------------------------------
+  subgraph P1["PLANO 1 · Desenvolvimento e entrega"]
+    direction LR
+    FEAT(["Commit em<br/>feature/*"])
+    CIDEV["CI · PR → develop<br/>trava de branches<br/>ruff · plan DEV"]
+    DEPDEV["Deploy DEV<br/>automático no merge"]
+    CIPROD["CI · PR → main<br/>plan PROD"]
+    DEPPROD["Deploy PROD<br/>merge + disparo manual"]
+
+    RPLAN["github-athenas-plan<br/>somente leitura"]
+    RDEV["github-athenas-dev<br/>só athenas-dev-*"]
+    RPROD["github-athenas-prod<br/>só athenas-prod-*"]
+    TFSTATE[("athenas-tfstate<br/>dev/ · prod/")]
+
+    FEAT -->|PR| CIDEV
+    CIDEV -->|merge| DEPDEV
+    DEPDEV -->|PR| CIPROD
+    CIPROD -->|merge| DEPPROD
+
+    CIDEV --- RPLAN
+    CIPROD --- RPLAN
+    DEPDEV --- RDEV
+    DEPPROD --- RPROD
+    RDEV -->|state| TFSTATE
+    RPROD -->|state| TFSTATE
+  end
+
+  %% ------------------------------------------------------------------
+  %% PLANO 2: infraestrutura provisionada (o que a esteira cria)
+  %% ------------------------------------------------------------------
+  subgraph P2["PLANO 2 · Infraestrutura provisionada"]
+    direction LR
+    TF["Mesmo código<br/>Terraform · infra/"]
+    ENVDEV["DEV · athenas-dev-*<br/>agenda desligada"]
+    ENVPROD["PROD · athenas-prod-*<br/>agenda às 6h"]
+
+    subgraph REC["Recursos criados em cada ambiente"]
+      direction TB
+      R1[("DynamoDB<br/>parametros")]
+      R2[("DynamoDB<br/>pipeline-logs")]
+      R3["Lambda<br/>ingestao-caixa"]
+      R4["Step Function<br/>ingestao"]
+      R5["EventBridge<br/>Scheduler"]
+    end
+
+    TF -->|dev.tfvars| ENVDEV
+    TF -->|prod.tfvars| ENVPROD
+    ENVDEV --> REC
+    ENVPROD --> REC
+  end
+
+  %% ------------------------------------------------------------------
+  %% PLANO 3: execução do pipeline (o que roda depois de provisionado)
+  %% ------------------------------------------------------------------
+  subgraph P3["PLANO 3 · Execução do pipeline"]
+    direction LR
+    SCH(["Scheduler<br/>6h"])
+    LER["Step Function<br/>lê parametros"]
+    FILTRO["diárias: sempre<br/>mensais: fim do mês"]
+    MAP[["Map paralelo<br/>por UF"]]
+    ROTA{"Base?"}
+    LCAIXA["Lambda<br/>ingestao-caixa<br/>download via proxy"]
+    PASS["ITBI · Pass<br/>IGNORADO"]
+    LITBI["Lambda<br/>ingestão ITBI"]
+    LOG[("DynamoDB<br/>pipeline-logs")]
+
+    subgraph BUCKET["Mesmo bucket S3 · prefixos separados"]
+      RAW[("#lt;ambiente#gt;/raw/caixa/<br/>uf=XX/dt=AAAA-MM-DD/")]
+      RAWFESA[("raw/caixa/")]
+    end
+
+    subgraph FESA["FESA · fora do repositório"]
+      TRIG(["trigg-tcc<br/>9h"])
+      LFESA["FESA_Ingestion<br/>_Caixa"]
+    end
+
+    TRAT["Tratamento<br/>e curadoria"]
+    CAT["Catálogo<br/>e consulta"]
+    UI["Interface de consulta<br/>usuário final"]
+
+    SCH --> LER --> FILTRO --> MAP --> ROTA
+    ROTA -->|Caixa| LCAIXA
+    ROTA -->|ITBI| PASS
+    PASS -.->|substituir| LITBI
+    LCAIXA -->|eventos| LOG
+    LCAIXA -->|CSV| RAW
+    TRIG --> LFESA -->|CSV| RAWFESA
+    RAW -.-> TRAT -.-> CAT -.-> UI
+  end
+
+  %% ------------------------------------------------------------------
+  %% Relação entre os planos
+  %% ------------------------------------------------------------------
+  LEG ~~~ P1
+  P1 ==>|terraform apply| P2
+  P2 ==>|recursos de PROD executam| P3
+
+  %% ------------------------------------------------------------------
+  %% Estilos
+  %% ------------------------------------------------------------------
+  classDef existente fill:#ffffff,stroke:#1f4e79,stroke-width:1.5px,color:#1a1a1a
+  classDef projetado fill:#f4f4f4,stroke:#a0a0a0,stroke-width:1.5px,stroke-dasharray:6 4,color:#8a8a8a
+  classDef externo fill:#fff4e5,stroke:#c27c0e,stroke-width:1.5px,color:#5c3a00
+  classDef acesso fill:#eaf3ea,stroke:#2e7d32,stroke-width:1.5px,color:#1a1a1a
+
+  class FEAT,CIDEV,DEPDEV,CIPROD,DEPPROD,TF,ENVDEV,ENVPROD,R1,R2,R3,R4,R5,SCH,LER,FILTRO,MAP,ROTA,LCAIXA,PASS,LOG,RAW,LG1 existente
+  class RPLAN,RDEV,RPROD,TFSTATE,LG4 acesso
+  class LITBI,TRAT,CAT,UI,LG2 projetado
+  class TRIG,LFESA,RAWFESA,LG3 externo
+
+  style LEG fill:#ffffff,stroke:#666666,color:#333333
+  style P1 fill:#eef4fb,stroke:#1f4e79,stroke-width:2px,color:#1f4e79
+  style P2 fill:#eef7f1,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
+  style P3 fill:#f6f0fa,stroke:#6a1b9a,stroke-width:2px,color:#4a148c
+  style REC fill:#ffffff,stroke:#2e7d32,color:#1b5e20
+  style BUCKET fill:#ffffff,stroke:#6a1b9a,color:#4a148c
+  style FESA fill:#fff9f0,stroke:#c27c0e,stroke-dasharray:3 3,color:#8a5300
